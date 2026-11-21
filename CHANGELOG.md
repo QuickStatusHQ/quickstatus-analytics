@@ -29,3 +29,14 @@
   longer blocks other sites on the same proxy address; through a proxy, the client IP gets a
   limiter entry only after the per-site and per-address checks pass; the limiter is also swept
   when it holds many keys.
+- Security review: control characters and lone surrogates in the event name or URL are a `400`
+  (and are removed from UTM values), so one beacon can't fail a database batch downstream;
+  `X-Forwarded-For` entries must be IP addresses, IPv6 is limited by its /64, a full limiter is
+  swept once a second instead of on every request, and a client IP named through
+  `X-QS-Proxy` no longer shares a limit with that IP's direct requests; deeply nested JSON is
+  a `400`, not a `500`; one flush and one salt read at a time, each with a deadline; a salt read
+  that finishes after midnight UTC is no longer used for the new day. Recipes: nginx, Caddy and
+  Next.js drop `Cookie` and `Authorization` on the script route too (Next.js serves the script
+  from a route handler instead of a rewrite, and answers `502`, uncached, when the script can't
+  be fetched). The release workflow runs the
+  tests in a separate job with a read-only token.

@@ -1,8 +1,11 @@
 your-site.com {
+	# Both routes drop Cookie and Authorization: your visitors' session cookies stay on your server.
 	handle /qs.js {
 		rewrite * /qs.js
 		reverse_proxy https://quickstatus.dev {
 			header_up Host quickstatus.dev
+			header_up -Cookie
+			header_up -Authorization
 		}
 	}
 	handle /qs/e {
@@ -11,6 +14,7 @@ your-site.com {
 			header_up Host a.quickstatus.dev
 			header_up X-QS-Proxy 1
 			header_up -Cookie
+			header_up -Authorization
 		}
 	}
 	# ... the rest of your site

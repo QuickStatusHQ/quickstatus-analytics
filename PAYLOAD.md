@@ -9,9 +9,9 @@ response.
 | --- | --- |
 | `202` | Accepted, with an empty body. Also for bots (counted as a number only) and for unknown site ids (dropped later). |
 | `204` | `OPTIONS` preflight. |
-| `400` | The body isn't valid payload v1; `{"detail": "…"}` says which field. |
+| `400` | The body isn't valid payload v1; `{"detail": "…"}` says which field. Also when `n` or `u` holds a control character (a browser never sends one), or an `X-Forwarded-For` entry the collector reads isn't an IP address. |
 | `413` | Body over 4096 bytes. |
-| `429` | Over 60 requests in 10 seconds from one IP; through a proxy, over 600 for one site or 5000 in all from one proxy address. |
+| `429` | Over 60 requests in 10 seconds from one IP (one /64 for IPv6); through a proxy, over 600 for one site or 5000 in all from one proxy address. |
 
 The schema is [`schema/event.v1.json`](schema/event.v1.json); examples are in
 [`schema/examples/`](schema/examples/). Version 1 only grows: new optional fields may be added,

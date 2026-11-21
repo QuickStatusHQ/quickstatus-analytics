@@ -14,6 +14,7 @@ and an optional geo lookup.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import secrets
@@ -45,6 +46,8 @@ IP_WINDOW_SECONDS = 10.0
 PROXY_IP_LIMIT = 600
 PROXY_EDGE_LIMIT = 5000
 SALT_RETRY_SECONDS = 60.0
+SALT_LOAD_SECONDS = 5.0
+SEND_SECONDS = 10.0
 
 CORS = {
     "Access-Control-Allow-Origin": "*",
@@ -73,18 +76,27 @@ class DailySalt:
         self._salt: bytes = b""
         self._shared = False
         self._next_try = 0.0
+        self._lock = asyncio.Lock()
 
     async def get(self, now: datetime) -> bytes:
         day = now.astimezone(UTC).date()
         if day != self._day:
             self._day, self._salt, self._shared, self._next_try = day, secrets.token_bytes(32), False, 0.0
         if not self._shared and time.monotonic() >= self._next_try:
-            try:
-                self._salt = await self._load(day)
-                self._shared = True
-            except Exception:
-                self._next_try = time.monotonic() + SALT_RETRY_SECONDS
-                log.warning("salt read failed; using a local salt for %s", day)
+            # One read at a time, with a deadline: requests arriving meanwhile wait for it
+            # instead of each opening their own connection to the store.
+            async with self._lock:
+                if day == self._day and not self._shared and time.monotonic() >= self._next_try:
+                    try:
+                        salt = await asyncio.wait_for(self._load(day), SALT_LOAD_SECONDS)
+                        # Midnight may have passed during the read: a day's salt must never be
+                        # used for the next day, or visitor ids would link across days.
+                        if day == self._day:
+                            self._salt, self._shared = salt, True
+                    except Exception:
+                        if day == self._day:
+                            self._next_try = time.monotonic() + SALT_RETRY_SECONDS
+                        log.warning("salt read failed; using a local salt for %s", day)
         return self._salt
 
 
@@ -128,7 +140,8 @@ def chunks(items: list[dict[str, Any]], max_bytes: int) -> list[list[dict[str, A
 class IpLimiter:
     """Accepted requests per key (an IP, or proxy address and site) in the last 10 s, in memory
     only. Denied requests aren't recorded, so a sender over its limit doesn't use up a limit it
-    shares with others. Swept every minute, or sooner when it holds many keys."""
+    shares with others. Swept every minute, or every second while it holds many keys (never on
+    every request: a full sweep of 100,000 keys takes milliseconds)."""
 
     MAX_KEYS = 100_000
 
@@ -138,7 +151,7 @@ class IpLimiter:
         self._swept = time.monotonic()
 
     def _window(self, key: str, now: float) -> list[float]:
-        if now - self._swept > 60 or len(self.hits) > self.MAX_KEYS:
+        if now - self._swept > (1 if len(self.hits) > self.MAX_KEYS else 60):
             self.hits = {k: v for k, v in self.hits.items() if now - v[-1] < IP_WINDOW_SECONDS}
             self._swept = now
         window = [stamp for stamp in self.hits.get(key, ()) if now - stamp < IP_WINDOW_SECONDS]
@@ -197,6 +210,27 @@ def _forwarded(request: Request) -> list[str]:
     return [part.strip() for part in (request.headers.get("x-forwarded-for") or "").split(",") if part.strip()]
 
 
+def _address(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """`text` as an IP address, or None. No zone ids (`fe80::1%anything` would be free text)."""
+    if len(text) > 45 or "%" in text:
+        return None
+    try:
+        return ipaddress.ip_address(text)
+    except ValueError:
+        return None
+
+
+def limit_key(ip: str) -> str:
+    """The rate-limit key for an address: IPv4 as it is, IPv6 by its /64, because one machine
+    usually holds a whole /64 and could otherwise use a new address for every request."""
+    address = _address(ip)
+    if address is None:
+        return ip
+    if address.version == 6 and address.ipv4_mapped is None:
+        return f"{ipaddress.IPv6Address(int(address) >> 64 << 64)}/64"
+    return str(address)
+
+
 class Collector:
     def __init__(
         self,
@@ -214,21 +248,26 @@ class Collector:
         self.limiter = IpLimiter()
         self.proxy_limiter = IpLimiter(PROXY_IP_LIMIT)
         self.edge_limiter = IpLimiter(PROXY_EDGE_LIMIT)
+        self._flush_lock = asyncio.Lock()
+        self._flush_task: asyncio.Task | None = None
 
     async def flush_once(self) -> int:
-        items = self.buffer.take()
-        if not items:
-            return 0
-        sent = 0
-        for batch in chunks(items, self.max_message_bytes):
-            try:
-                await self.send(batch)
-                sent += len(batch)
-            except Exception:
-                log.exception("send failed; %s events kept for the next flush", len(items) - sent)
-                self.buffer.put_back(items[sent:])
-                break
-        return sent
+        # One flush at a time, each send with a deadline: a queue that hangs can't pile up tasks
+        # that each hold a batch outside the (capped) buffer.
+        async with self._flush_lock:
+            items = self.buffer.take()
+            if not items:
+                return 0
+            sent = 0
+            for batch in chunks(items, self.max_message_bytes):
+                try:
+                    await asyncio.wait_for(self.send(batch), SEND_SECONDS)
+                    sent += len(batch)
+                except Exception:
+                    log.exception("send failed; %s events kept for the next flush", len(items) - sent)
+                    self.buffer.put_back(items[sent:])
+                    break
+            return sent
 
     async def flush_loop(self) -> None:
         while True:
@@ -243,15 +282,28 @@ class Collector:
             beacon = parse_beacon(json.loads(body or b"{}"))
         except (ValueError, BeaconError) as exc:
             return JSONResponse({"detail": str(exc)[:200]}, status_code=400, headers=CORS)
+        except RecursionError:
+            # "[[[[…" a thousand deep.
+            return JSONResponse({"detail": "body must be a JSON object"}, status_code=400, headers=CORS)
         ip = client_ip(request)
         edge = edge_ip(request)
+        # X-Forwarded-For is text the sender can write. Only real addresses become limiter keys
+        # (or reach the visitor id and the geo lookup).
+        if _forwarded(request) and (_address(ip) is None or _address(edge) is None):
+            return JSONResponse({"detail": "X-Forwarded-For must hold IP addresses"}, status_code=400, headers=CORS)
+        ip_key, edge_key = limit_key(ip), limit_key(edge)
         # Every request counts against the limits, bots included, and only accepted ones are
         # recorded. Through a proxy, the per-site and per-address limits are checked before the
-        # (spoofable) client IP gets a limiter entry.
+        # (spoofable) client IP gets a limiter entry, and that entry is the proxy's own: a
+        # sender naming someone else's IP can't use up the limit of that IP's direct requests.
         if edge != ip:
-            allowed = allow_all((self.proxy_limiter, f"{edge} {beacon.site}"), (self.edge_limiter, edge), (self.limiter, ip))
+            allowed = allow_all(
+                (self.proxy_limiter, f"{edge_key} {beacon.site}"),
+                (self.edge_limiter, edge_key),
+                (self.limiter, f"{edge_key}>{ip_key}"),
+            )
         else:
-            allowed = self.limiter.allow(ip)
+            allowed = self.limiter.allow(ip_key)
         if not allowed:
             return Response(status_code=429, headers=CORS)
         user_agent = request.headers.get("user-agent") or ""
@@ -263,8 +315,8 @@ class Collector:
             return Response(status_code=202, headers=CORS)
         salt = await self.salt(now)
         self.buffer.add(enrich(beacon, ip=ip, user_agent=user_agent, salt=salt, ts_ms=ts_ms, geo=self.geo(ip)))
-        if len(self.buffer.items) >= FLUSH_AT:
-            asyncio.create_task(self.flush_once())
+        if len(self.buffer.items) >= FLUSH_AT and (self._flush_task is None or self._flush_task.done()):
+            self._flush_task = asyncio.create_task(self.flush_once())
         return Response(status_code=202, headers=CORS)
 
 

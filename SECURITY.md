@@ -23,8 +23,9 @@ such as `#access_token=…` are never sent.
 anything it receives. The `fetch` fallback uses `credentials: "omit"`, but `navigator.sendBeacon`
 always sends the cookies the browser has for the collector's host. `a.quickstatus.dev` sets none
 and the collector reads none. Behind a first-party proxy on your own domain, your site's cookies
-reach your proxy: the nginx, Caddy, Cloudflare and Next.js recipes drop them before forwarding;
-Netlify's proxy redirects can't, so they reach the collector, which ignores them.
+reach your proxy: the nginx, Caddy, Cloudflare and Next.js recipes drop them (and any
+`Authorization` header) before forwarding, for the script as well as for beacons; Netlify's proxy
+redirects can't, so there they reach quickstatus.dev and the collector, which ignore them.
 
 **Pinned releases.** Each release publishes `SHA256SUMS` and an `SRI` file with the
 `integrity=` values. Load `qs@X.Y.Z.js` with

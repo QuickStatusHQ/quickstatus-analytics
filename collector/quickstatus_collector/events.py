@@ -26,6 +26,10 @@ UTM_MAX = 200
 ENGAGED_MAX_MS = 6 * 3600 * 1000
 VALUE_MAX = 10**12
 UTM_KEYS = ("source", "medium", "campaign", "content", "term")
+# Control characters and lone surrogates. A browser never sends them (URLs are percent-encoded),
+# and a database downstream can't store them (NUL in text, a surrogate in UTF-8), so one such
+# beacon must not reach the queue.
+UNSAFE_RE = re.compile("[\x00-\x1f\x7f-\x9f\ud800-\udfff]")
 
 
 class BeaconError(ValueError):
@@ -67,8 +71,10 @@ def parse_beacon(data: Any) -> Beacon:
     if not isinstance(name, str) or not name.strip():
         raise BeaconError("n must be a non-empty string")
     name = " ".join(name.split())[:EVENT_NAME_MAX]
+    if UNSAFE_RE.search(name):
+        raise BeaconError("n must not hold control characters")
     url = data.get("u")
-    if not isinstance(url, str) or len(url) > URL_MAX:
+    if not isinstance(url, str) or len(url) > URL_MAX or UNSAFE_RE.search(url):
         raise BeaconError("u must be a URL")
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
@@ -76,6 +82,9 @@ def parse_beacon(data: Any) -> Beacon:
     referrer = data.get("r")
     if referrer is not None and not isinstance(referrer, str):
         raise BeaconError("r must be a string")
+    if referrer and UNSAFE_RE.search(referrer):
+        # Not worth losing the page view for: count it as a direct visit.
+        referrer = None
     currency = data.get("c")
     if currency is not None:
         if not isinstance(currency, str) or not re.fullmatch(r"[A-Za-z]{3}", currency):
@@ -182,17 +191,22 @@ def split_url(url: str) -> tuple[str, str, dict[str, str]]:
         search = "&".join(q for q in (search, route_query) if q)
     path = path[:PATH_MAX]
     query = parse_qs(search, keep_blank_values=False)
+    def first(name: str) -> str:
+        # parse_qs percent-decodes, so ?utm_source=a%00b arrives here as a control character.
+        values = query.get(name)
+        return UNSAFE_RE.sub("", values[0]).strip()[:UTM_MAX] if values else ""
+
     utm: dict[str, str] = {}
     for key in UTM_KEYS:
-        values = query.get(f"utm_{key}")
-        if values and values[0].strip():
-            utm[key] = values[0].strip()[:UTM_MAX]
+        value = first(f"utm_{key}")
+        if value:
+            utm[key] = value
     # ?ref= and ?source= are common on launch sites (Product Hunt, newsletters).
     if "source" not in utm:
         for alias in ("ref", "source"):
-            values = query.get(alias)
-            if values and values[0].strip():
-                utm["source"] = values[0].strip()[:UTM_MAX]
+            value = first(alias)
+            if value:
+                utm["source"] = value
                 break
     return host, path, utm
 
