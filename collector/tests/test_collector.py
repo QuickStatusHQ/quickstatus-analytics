@@ -21,7 +21,7 @@ import uvicorn
 from fastapi.testclient import TestClient
 
 from quickstatus_collector import Collector, DailySalt, create_app, parse_beacon, visitor_id
-from quickstatus_collector.app import IP_LIMIT, PROXY_IP_LIMIT, chunks
+from quickstatus_collector.app import IP_LIMIT, PROXY_EDGE_LIMIT, PROXY_IP_LIMIT, chunks
 from quickstatus_collector.events import enrich, is_bot, split_url
 from quickstatus_collector.sources import SOURCES, source_for
 
@@ -203,6 +203,7 @@ def test_hash_routes_keep_their_route_and_engage_needs_e():
         "www.example.com", "/#/reset", {"source": "x"})
     assert split_url("https://www.example.com/#access_token=ya29.SECRET&token_type=Bearer")[1] == "/"
     assert split_url("https://www.example.com/pricing#faq")[1] == "/pricing"
+    assert split_url("https://www.example.com/#/callback#access_token=SECRET")[1] == "/#/callback"
     with pytest.raises(ValueError):
         parse_beacon({"s": "k3x9mpq2wa", "n": "engage", "u": "https://example.com/"})
 
@@ -215,3 +216,14 @@ def test_lookalike_google_hosts_and_cubot_phones():
     cubot = "Mozilla/5.0 (Linux; Android 12; CUBOT X30) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/23.0 Chrome/115.0 Mobile Safari/537.36"
     assert not is_bot(cubot)
     assert is_bot("Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")
+
+
+def test_random_site_ids_through_a_spoofed_proxy_hit_the_address_ceiling(collector):
+    with TestClient(create_app(collector)) as client:
+        codes = []
+        for i in range(PROXY_EDGE_LIMIT + 1):
+            body = json.dumps({"s": f"site{i:06d}", "u": "https://example.com/", "w": 1440})
+            codes.append(client.post("/e", content=body, headers={
+                "user-agent": UA, "x-qs-proxy": "1",
+                "x-forwarded-for": f"10.{i // 62500}.{i // 250 % 250}.{i % 250}, 203.0.113.50"}).status_code)
+        assert codes.count(202) == PROXY_EDGE_LIMIT and codes[-1] == 429

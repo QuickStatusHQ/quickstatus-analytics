@@ -53,11 +53,8 @@
   function pageUrl() {
     var base = loc.protocol + "//" + loc.host + loc.pathname;
     // Hash routers only: "#/route", query filtered. Other fragments are never sent.
-    var hash = "";
-    if (hashMode && /^#!?\//.test(loc.hash)) {
-      var parts = loc.hash.split("?");
-      hash = parts[0] + kept(parts[1]);
-    }
+    var route = hashMode && /^#(!?\/[^?#]*)(?:\?([^#]*))?/.exec(loc.hash);
+    var hash = route ? "#" + route[1] + kept(route[2]) : "";
     var url = base + kept(loc.search.replace(/^\?/, "")) + hash;
     // Up to 2000 characters: drop the query, then cut.
     return url.length > 2000 ? (base + hash).slice(0, 2000) : url;
@@ -127,7 +124,11 @@
   }, { passive: true });
 
   // --- page views ------------------------------------------------------------------------
+  // A prerendered page sends nothing until it is opened.
+  var held = d.prerendering ? [] : null;
+
   function pageview() {
+    if (held) return;
     var page = pageUrl();
     if (page === currentPage) return;
     if (currentPage) flushEngagement(false);
@@ -138,9 +139,6 @@
     visibleSince = d.visibilityState === "visible" ? Date.now() : 0;
     if (!currentIgnored) send(payload("pageview", null, page));
   }
-
-  // A prerendered page sends nothing until it is opened.
-  var held = d.prerendering ? [] : null;
 
   function track(name, options) {
     if (held) return held.push(arguments);

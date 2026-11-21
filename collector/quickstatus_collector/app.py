@@ -41,8 +41,10 @@ IP_WINDOW_SECONDS = 10.0
 # Per proxy address and site, for requests that say they come through a first-party proxy
 # (X-QS-Proxy: 1). Anyone can send that header with any X-Forwarded-For, so the address the
 # load balancer saw is limited too. Keyed by site as well, because platform proxies (Workers,
-# Netlify, Vercel) may share egress addresses between many sites.
+# Netlify, Vercel) may share egress addresses between many sites. Site ids aren't checked here,
+# so each proxy address also has a ceiling across all sites.
 PROXY_IP_LIMIT = 600
+PROXY_EDGE_LIMIT = 5000
 SALT_RETRY_SECONDS = 60.0
 
 CORS = {
@@ -185,6 +187,7 @@ class Collector:
         self.buffer = Buffer()
         self.limiter = IpLimiter()
         self.proxy_limiter = IpLimiter(PROXY_IP_LIMIT)
+        self.edge_limiter = IpLimiter(PROXY_EDGE_LIMIT)
 
     async def flush_once(self) -> int:
         items = self.buffer.take()
@@ -217,7 +220,10 @@ class Collector:
         ip = client_ip(request)
         edge = edge_ip(request)
         # Every request counts against the limits, bots included.
-        if not self.limiter.allow(ip) or (edge != ip and not self.proxy_limiter.allow(f"{edge} {beacon.site}")):
+        proxied = edge != ip
+        if not self.limiter.allow(ip) or (proxied and not (
+            self.edge_limiter.allow(edge) and self.proxy_limiter.allow(f"{edge} {beacon.site}")
+        )):
             return Response(status_code=429, headers=CORS)
         user_agent = request.headers.get("user-agent") or ""
         now = datetime.now(UTC)

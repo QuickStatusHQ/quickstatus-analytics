@@ -21,3 +21,7 @@
   made during prerender wait until the page is opened; event names are trimmed before the
   reserved-name check; the proxy limit is per proxy address and site; `google.xyz`-style
   hosts are no longer Google; README says a second tag's `data-site` is ignored.
+- Third review: a proxy address also has a 5000-per-10-seconds ceiling across all sites (made-up
+  site ids no longer get past the per-site limit); a hash route ends at a second `#`
+  (`#/callback#access_token=…`); `pushState` and `popstate` during prerender send nothing, and
+  opening the page counts the current URL once.

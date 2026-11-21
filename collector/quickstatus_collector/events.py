@@ -176,7 +176,8 @@ def split_url(url: str) -> tuple[str, str, dict[str, str]]:
         path = "/" + path
     search = parts.query
     if parts.fragment.startswith(("/", "!/")):
-        route, _, route_query = parts.fragment.partition("?")
+        # Up to a second "#": /#/callback#access_token=… keeps only /callback.
+        route, _, route_query = parts.fragment.split("#", 1)[0].partition("?")
         path = f"{path}#{route}"
         search = "&".join(q for q in (search, route_query) if q)
     path = path[:PATH_MAX]

@@ -74,8 +74,8 @@ Some ad blockers block third-party analytics hosts. To serve the script and the 
 your own domain, see [`examples/`](examples/) for Next.js, Netlify, Vercel, Cloudflare Workers,
 nginx and Caddy. Each one forwards the visitor's IP in `X-Forwarded-For` and sets
 `X-QS-Proxy: 1`, without which every visitor would look like your proxy. Through a proxy, the
-collector also limits the proxy's own address (600 requests per 10 seconds per site), because
-anyone can send that header. A site sending more than that through one proxy address gets `429`s
+collector also limits the proxy's own address (600 requests per 10 seconds per site, and 5000
+across all sites), because anyone can send that header. A site sending more than that through one proxy address gets `429`s
 for the excess.
 
 ## Development

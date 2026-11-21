@@ -11,7 +11,7 @@ response.
 | `204` | `OPTIONS` preflight. |
 | `400` | The body isn't valid payload v1; `{"detail": "…"}` says which field. |
 | `413` | Body over 4096 bytes. |
-| `429` | Over 60 requests in 10 seconds from one IP, or over 600 for one site from one proxy address. |
+| `429` | Over 60 requests in 10 seconds from one IP; through a proxy, over 600 for one site or 5000 in all from one proxy address. |
 
 The schema is [`schema/event.v1.json`](schema/event.v1.json); examples are in
 [`schema/examples/`](schema/examples/). Version 1 only grows: new optional fields may be added,
@@ -21,7 +21,7 @@ nothing is removed or changes meaning.
 | --- | --- | --- | --- |
 | `s` | string | all | Site id from `data-site`. |
 | `n` | string | all | `pageview`, `engage`, or the custom event name. |
-| `u` | string | all | Page URL, at most 2000 characters (the query is dropped first, then the URL is cut). The query keeps only `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `ref` and `source`; everything else is removed in the browser. The fragment is sent only with `data-hash="true"`, and only a hash-router route (`#/…` or `#!/…`) with its query filtered the same way; other fragments (`#faq`, `#access_token=…`) are never sent. The route is stored as part of the path, without its query. |
+| `u` | string | all | Page URL, at most 2000 characters (the query is dropped first, then the URL is cut). The query keeps only `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `ref` and `source`; everything else is removed in the browser. The fragment is sent only with `data-hash="true"`, and only a hash-router route (`#/…` or `#!/…`, up to any second `#`) with its query filtered the same way; other fragments (`#faq`, `#access_token=…`) are never sent. The route is stored as part of the path, without its query. |
 | `r` | string or null | all | Origin of `document.referrer` (`https://news.ycombinator.com/`); its path and query are not sent. Only its host is stored. |
 | `w` | integer | all | `window.innerWidth`, for Desktop / Tablet / Phone. |
 | `e` | integer | `engage` | Milliseconds the page was visible since the last `engage` or page view. A page can send several (one per time the tab is hidden); add them up per page. |

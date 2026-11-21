@@ -217,6 +217,8 @@ test("hash mode sends the route with its query filtered, and no other fragment",
     "https://www.example.com/#!/docs": "https://www.example.com/#!/docs",
     "https://www.example.com/#access_token=ya29.SECRET&token_type=Bearer": "https://www.example.com/",
     "https://www.example.com/pricing#faq": "https://www.example.com/pricing",
+    "https://www.example.com/#/callback#access_token=SECRET": "https://www.example.com/#/callback",
+    "https://www.example.com/#/a?utm_source=x#t=1": "https://www.example.com/#/a?utm_source=x",
   };
   for (const [url, sent] of Object.entries(urls)) {
     assert.equal(browser({ url, attrs: { hash: "true" } }).run().sent[0].body.u, sent);
@@ -232,6 +234,15 @@ test("calls during prerender wait until the page is opened", () => {
   assert.equal(b.sent.length, 0);
   b.activate();
   assert.deepEqual(b.sent.map((x) => x.body.n), ["pageview", "Purchase", "Signup"]);
+});
+
+test("navigation during prerender sends nothing; opening counts the current page once", () => {
+  const b = browser({ prerendering: true }).run();
+  b.history.pushState({}, "", "/y");
+  b.location.pathname = "/z"; b.fire("popstate");
+  assert.equal(b.sent.length, 0);
+  b.activate();
+  assert.deepEqual(b.sent.map((x) => [x.body.n, new URL(x.body.u).pathname]), [["pageview", "/z"]]);
 });
 
 test("event names are trimmed before the reserved check", () => {
