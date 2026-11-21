@@ -21,8 +21,8 @@ import uvicorn
 from fastapi.testclient import TestClient
 
 from quickstatus_collector import Collector, DailySalt, create_app, parse_beacon, visitor_id
-from quickstatus_collector.app import IP_LIMIT, chunks
-from quickstatus_collector.events import enrich, is_bot
+from quickstatus_collector.app import IP_LIMIT, PROXY_IP_LIMIT, chunks
+from quickstatus_collector.events import enrich, is_bot, split_url
 from quickstatus_collector.sources import SOURCES, source_for
 
 REPO = Path(__file__).resolve().parents[2]
@@ -167,3 +167,41 @@ async def test_no_log_line_holds_the_client_ip(collector, caplog):
         access.removeHandler(caplog.handler)
         server.should_exit = True
         await task
+
+
+def test_spoofed_proxy_header_and_bots_stay_under_the_limits(collector):
+    body = json.dumps({"s": "k3x9mpq2wa", "u": "https://example.com/", "w": 1440})
+    with TestClient(create_app(collector)) as client:
+        # A client inventing a visitor per request through X-QS-Proxy is capped by its own address.
+        codes = [client.post("/e", content=body, headers={
+            "user-agent": UA, "x-qs-proxy": "1", "x-forwarded-for": f"10.0.{i // 250}.{i % 250}, 203.0.113.9"}).status_code
+            for i in range(PROXY_IP_LIMIT + 1)]
+        assert codes.count(202) == PROXY_IP_LIMIT and codes[-1] == 429
+        bots = [client.post("/e", content=body, headers={"user-agent": "curl/8.5", "x-forwarded-for": "203.0.113.10"}).status_code
+                for _ in range(IP_LIMIT + 1)]
+        assert bots[-1] == 429
+
+
+def test_get_on_e_lists_post_in_allow(collector):
+    with TestClient(create_app(collector)) as client:
+        response = client.get("/e")
+        assert response.status_code == 405
+        assert set(response.headers["allow"].replace(" ", "").split(",")) == {"POST", "OPTIONS"}
+        assert client.options("/e").status_code == 204
+
+
+def test_hash_routes_keep_their_route_and_engage_needs_e():
+    assert split_url("https://www.example.com/#/settings")[1] == "/#/settings"
+    assert split_url("https://www.example.com/docs?x=1")[1] == "/docs"
+    with pytest.raises(ValueError):
+        parse_beacon({"s": "k3x9mpq2wa", "n": "engage", "u": "https://example.com/"})
+
+
+def test_lookalike_google_hosts_and_cubot_phones():
+    for host in ("google.com", "google.de", "www.google.co.uk", "news.google.fr", "google.com.au"):
+        assert source_for(host) == "Google", host
+    for host in ("google.attacker.example", "google.com.attacker"):
+        assert source_for(host) == host, host
+    cubot = "Mozilla/5.0 (Linux; Android 12; CUBOT X30) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/23.0 Chrome/115.0 Mobile Safari/537.36"
+    assert not is_bot(cubot)
+    assert is_bot("Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")

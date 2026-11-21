@@ -9,6 +9,8 @@
   var d = document;
   var nav = navigator;
   var loc = location;
+  // Loaded twice: the first copy counts.
+  if (w.qs && w.qs.loaded) return;
   var script = d.currentScript;
   var attr = function (name) {
     return script ? script.getAttribute("data-" + name) : null;
@@ -51,8 +53,17 @@
         if (KEEP.test(pair.split("=")[0])) query.push(pair);
       });
     }
-    var url = loc.protocol + "//" + loc.host + loc.pathname + (query.length ? "?" + query.join("&") : "");
-    return hashMode && loc.hash ? url + loc.hash : url;
+    var base = loc.protocol + "//" + loc.host + loc.pathname;
+    var hash = hashMode ? loc.hash : "";
+    var url = base + (query.length ? "?" + query.join("&") : "") + hash;
+    // Up to 2000 characters: drop the query, then cut.
+    return url.length > 2000 ? (base + hash).slice(0, 2000) : url;
+  }
+
+  // Only the referrer's origin is sent, never its path or query.
+  function referrer() {
+    var m = /^[a-z][a-z0-9+.-]*:\/\/[^\/?#]+/i.exec(d.referrer || "");
+    return m ? m[0] + "/" : null;
   }
 
   function send(body) {
@@ -69,8 +80,8 @@
     }
   }
 
-  function payload(name, extra) {
-    var body = { s: site, n: name, u: pageUrl(), r: d.referrer || null, w: w.innerWidth };
+  function payload(name, extra, url) {
+    var body = { s: site, n: name, u: url || pageUrl(), r: referrer(), w: w.innerWidth };
     if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) body[k] = extra[k];
     return body;
   }
@@ -80,6 +91,7 @@
   var visibleSince = d.visibilityState === "visible" ? Date.now() : 0;
   var maxScroll = 0;
   var currentPage = null;
+  var currentIgnored = false;
 
   function scrollDepth() {
     var root = d.documentElement;
@@ -88,22 +100,24 @@
     return Math.min(100, Math.round(((w.scrollY || root.scrollTop) + w.innerHeight) / height * 100));
   }
 
-  function flushEngagement() {
+  // Engaged time since the last engage or page view, for the page being left. `live` is false
+  // once the location shows the next page (popstate, hashchange).
+  function flushEngagement(live) {
     if (visibleSince) {
       engaged += Date.now() - visibleSince;
       visibleSince = d.visibilityState === "visible" ? Date.now() : 0;
     }
-    if (currentPage && engaged >= 1000 && !ignored()) {
-      send(payload("engage", { e: engaged, d: Math.max(maxScroll, scrollDepth()) }));
+    if (currentPage && engaged >= 1000 && !currentIgnored) {
+      send(payload("engage", { e: engaged, d: live ? Math.max(maxScroll, scrollDepth()) : maxScroll }, currentPage));
     }
     engaged = 0;
   }
 
   d.addEventListener("visibilitychange", function () {
-    if (d.visibilityState === "hidden") flushEngagement();
+    if (d.visibilityState === "hidden") flushEngagement(true);
     else visibleSince = Date.now();
   });
-  w.addEventListener("pagehide", flushEngagement);
+  w.addEventListener("pagehide", function () { flushEngagement(true); });
   w.addEventListener("scroll", function () {
     var depth = scrollDepth();
     if (depth > maxScroll) maxScroll = depth;
@@ -113,24 +127,27 @@
   function pageview() {
     var page = pageUrl();
     if (page === currentPage) return;
-    if (currentPage) flushEngagement();
+    if (currentPage) flushEngagement(false);
     currentPage = page;
+    currentIgnored = !!ignored();
     engaged = 0;
-    maxScroll = 0;
+    maxScroll = scrollDepth();
     visibleSince = d.visibilityState === "visible" ? Date.now() : 0;
-    if (ignored()) return;
-    send(payload("pageview"));
+    if (!currentIgnored) send(payload("pageview", null, page));
   }
 
   function track(name, options) {
     if (!name || typeof name !== "string") return;
     if (name === "pageview") return pageview();
-    if (ignored()) return;
+    // "engage" is reserved for engaged time.
+    if (name === "engage" || ignored()) return;
     var extra = {};
-    if (options && typeof options.value === "number" && isFinite(options.value)) {
-      // Minor units (cents): qs("Purchase", { value: 49.0, currency: "EUR" }) sends 4900.
+    // Value × 100: { value: 49, currency: "EUR" } sends 4900. A negative value or a bad currency
+    // is left out; the event still counts.
+    if (options && typeof options.value === "number" && isFinite(options.value) && options.value >= 0) {
       extra.v = Math.round(options.value * 100);
-      if (typeof options.currency === "string") extra.c = options.currency.toUpperCase();
+      var c = typeof options.currency === "string" ? options.currency.toUpperCase() : "";
+      if (/^[A-Z]{3}$/.test(c)) extra.c = c;
     }
     send(payload(name, extra));
   }
@@ -139,6 +156,8 @@
     var push = history.pushState;
     if (push) {
       history.pushState = function () {
+        // Engaged time belongs to the page being left.
+        flushEngagement(true);
         push.apply(this, arguments);
         pageview();
       };
@@ -149,18 +168,12 @@
 
   // Calls made before the script loaded: window.qs = window.qs || function () { (qs.q = qs.q || []).push(arguments) }
   var queued = (w.qs && w.qs.q) || [];
+  track.loaded = true;
   w.qs = track;
   if (!manual) {
-    if (d.visibilityState === "prerender") {
-      d.addEventListener("visibilitychange", function once() {
-        if (d.visibilityState === "visible") {
-          d.removeEventListener("visibilitychange", once);
-          pageview();
-        }
-      });
-    } else {
-      pageview();
-    }
+    // A prerendered page (speculation rules) counts only once the visitor opens it.
+    if (d.prerendering) d.addEventListener("prerenderingchange", function () { pageview(); });
+    else pageview();
   }
   for (var i = 0; i < queued.length; i++) track.apply(null, queued[i]);
 

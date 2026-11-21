@@ -38,6 +38,10 @@ BUFFER_MAX = 20_000
 # Per client IP: a page load sends 1-3 beacons, so this only stops scripts.
 IP_LIMIT = 60
 IP_WINDOW_SECONDS = 10.0
+# Per proxy address, for requests that say they come through a first-party proxy
+# (X-QS-Proxy: 1). Anyone can send that header with any X-Forwarded-For, so the address the
+# load balancer saw is limited too, with room for one site's traffic through its proxy.
+PROXY_IP_LIMIT = 600
 SALT_RETRY_SECONDS = 60.0
 
 CORS = {
@@ -122,7 +126,8 @@ def chunks(items: list[dict[str, Any]], max_bytes: int) -> list[list[dict[str, A
 class IpLimiter:
     """Request timestamps per IP for the last 10 s, in memory only, swept every minute."""
 
-    def __init__(self) -> None:
+    def __init__(self, limit: int = IP_LIMIT) -> None:
+        self.limit = limit
         self.hits: dict[str, list[float]] = defaultdict(list)
         self._swept = time.monotonic()
 
@@ -134,20 +139,33 @@ class IpLimiter:
         window = [stamp for stamp in self.hits[ip] if now - stamp < IP_WINDOW_SECONDS]
         window.append(now)
         self.hits[ip] = window
-        return len(window) <= IP_LIMIT
+        return len(window) <= self.limit
 
 
 def client_ip(request: Request) -> str:
     """The visitor's IP. The load balancer appends the address it saw as the last
     X-Forwarded-For entry. Behind a first-party proxy recipe (examples/, which sends
     X-QS-Proxy: 1) that address is the proxy, so the entry before it is the visitor. A forged
-    entry only changes the sender's own visitor id."""
-    forwarded = [part.strip() for part in (request.headers.get("x-forwarded-for") or "").split(",") if part.strip()]
+    entry changes the sender's visitor id; the per-address limits in `Collector.collect` cap
+    how many it can make."""
+    forwarded = _forwarded(request)
     if forwarded:
         if request.headers.get("x-qs-proxy") == "1" and len(forwarded) >= 2:
             return forwarded[-2]
         return forwarded[-1]
     return request.client.host if request.client else ""
+
+
+def edge_ip(request: Request) -> str:
+    """The address the load balancer saw: a first-party proxy, or the visitor itself."""
+    forwarded = _forwarded(request)
+    if forwarded:
+        return forwarded[-1]
+    return request.client.host if request.client else ""
+
+
+def _forwarded(request: Request) -> list[str]:
+    return [part.strip() for part in (request.headers.get("x-forwarded-for") or "").split(",") if part.strip()]
 
 
 class Collector:
@@ -165,6 +183,7 @@ class Collector:
         self.max_message_bytes = max_message_bytes
         self.buffer = Buffer()
         self.limiter = IpLimiter()
+        self.proxy_limiter = IpLimiter(PROXY_IP_LIMIT)
 
     async def flush_once(self) -> int:
         items = self.buffer.take()
@@ -195,6 +214,10 @@ class Collector:
         except (ValueError, BeaconError) as exc:
             return JSONResponse({"detail": str(exc)[:200]}, status_code=400, headers=CORS)
         ip = client_ip(request)
+        edge = edge_ip(request)
+        # Every request counts against the limits, bots included.
+        if not self.limiter.allow(ip) or (edge != ip and not self.proxy_limiter.allow(edge)):
+            return Response(status_code=429, headers=CORS)
         user_agent = request.headers.get("user-agent") or ""
         now = datetime.now(UTC)
         ts_ms = int(now.timestamp() * 1000)
@@ -202,8 +225,6 @@ class Collector:
             # Bots are only counted per site per day.
             self.buffer.add({"site": beacon.site, "ts": ts_ms, "bot": 1})
             return Response(status_code=202, headers=CORS)
-        if not self.limiter.allow(ip):
-            return Response(status_code=429, headers=CORS)
         salt = await self.salt(now)
         self.buffer.add(enrich(beacon, ip=ip, user_agent=user_agent, salt=salt, ts_ms=ts_ms, geo=self.geo(ip)))
         if len(self.buffer.items) >= FLUSH_AT:
@@ -236,12 +257,11 @@ def create_app(collector: Collector, *, title: str = "QuickStatus.dev collector"
 
     app = FastAPI(title=title, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
-    @app.options("/e")
-    async def preflight() -> Response:
-        return Response(status_code=204, headers=CORS)
-
-    @app.post("/e")
+    # One route for both methods, so a 405 lists both in Allow.
+    @app.api_route("/e", methods=["POST", "OPTIONS"])
     async def collect(request: Request) -> Response:
+        if request.method == "OPTIONS":
+            return Response(status_code=204, headers=CORS)
         return await collector.collect(request)
 
     @app.get("/health")

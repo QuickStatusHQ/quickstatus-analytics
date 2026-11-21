@@ -14,6 +14,14 @@ jobs:
           v="$(sed -n 's|^/\*! QuickStatus.dev analytics v\([0-9.]*\) .*|\1|p' src/qs.js)"
           [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "qs.js header $v != tag $GITHUB_REF_NAME"; exit 1; }
       - run: node --test test/*.test.mjs
+      # The same gates as test.yml, so a tag can't ship what main wouldn't.
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with: {python-version: '3.12'}
+      - name: Collector tests
+        working-directory: collector
+        run: pip install -e '.[test]' && pytest -q
+      - name: Size budget (3 KB gzipped)
+        run: '[ "$(gzip -9c src/qs.js | wc -c)" -le 3072 ]'
       - name: Assets
         run: |
           mkdir dist

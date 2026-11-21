@@ -14,11 +14,17 @@ sets in their own browser.
 visibility and scroll position. It does not read canvas, WebGL, audio, fonts, plugins, screen
 size, hardware or battery information.
 
-**Minimal URL.** The query string is reduced to `utm_*`, `ref` and `source` in the browser. The
-fragment is sent only when the site opts in with `data-hash="true"`.
+**Minimal URL.** The query string is reduced to `utm_*`, `ref` and `source` in the browser, and
+the referrer to its origin. The fragment is sent only when the site opts in with
+`data-hash="true"`.
 
-**No reads of the response, no credentials.** Beacons are fire-and-forget; `fetch` uses
-`credentials: "omit"`. The script never evaluates anything it receives.
+**No reads of the response.** Beacons are fire-and-forget, and the script never evaluates
+anything it receives. The `fetch` fallback uses `credentials: "omit"`, but `navigator.sendBeacon`
+always sends the cookies the browser has for the collector's host. `a.quickstatus.dev` sets none
+and the collector reads none. Behind a first-party proxy on your own domain, your site's cookies
+reach your proxy: the nginx, Caddy, Cloudflare and Next.js recipes drop them before forwarding;
+Netlify's proxy redirects can't, so they reach the collector, which ignores them.
 
-**Pinned releases.** Each release publishes `SHA256SUMS` and SRI hashes. Load `qs@X.Y.Z.js` with
+**Pinned releases.** Each release publishes `SHA256SUMS` and an `SRI` file with the
+`integrity=` values. Load `qs@X.Y.Z.js` with
 `integrity=` in production so a changed file can't run on your site. Releases are not signed.

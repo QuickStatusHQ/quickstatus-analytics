@@ -7,7 +7,7 @@ import vm from "node:vm";
 const SOURCE = readFileSync(new URL("../src/qs.js", import.meta.url), "utf8");
 const SCHEMA = JSON.parse(readFileSync(new URL("../schema/event.v1.json", import.meta.url), "utf8"));
 
-function browser({ url = "https://www.example.com/pricing?utm_source=hn&email=a@b.c#top", attrs = {}, referrer = "https://news.ycombinator.com/", webdriver = false, storage = {} } = {}) {
+function browser({ url = "https://www.example.com/pricing?utm_source=hn&email=a@b.c#top", attrs = {}, referrer = "https://news.ycombinator.com/", webdriver = false, storage = {}, prerendering = false } = {}) {
   const sent = [];
   const listeners = {};
   const docListeners = {};
@@ -20,7 +20,8 @@ function browser({ url = "https://www.example.com/pricing?utm_source=hn&email=a@
   const document = {
     currentScript: { getAttribute: (name) => allAttrs[name.replace(/^data-/, "")] ?? null },
     referrer,
-    visibilityState: "visible",
+    prerendering,
+    visibilityState: prerendering ? "hidden" : "visible",
     documentElement: { scrollHeight: 2000, scrollTop: 0 },
     body: { scrollHeight: 2000 },
     addEventListener: (type, fn) => { (docListeners[type] ||= []).push(fn); },
@@ -48,6 +49,11 @@ function browser({ url = "https://www.example.com/pricing?utm_source=hn&email=a@
     sent, window, document, location, history,
     run() { vm.runInContext(SOURCE, context); return this; },
     hide() { document.visibilityState = "hidden"; (docListeners.visibilitychange || []).forEach((fn) => fn()); },
+    activate() {
+      document.prerendering = false; document.visibilityState = "visible";
+      (docListeners.prerenderingchange || []).forEach((fn) => fn());
+    },
+    docListeners,
     fire(type) { (listeners[type] || []).forEach((fn) => fn()); },
   };
 }
@@ -138,5 +144,68 @@ for (const [name, options] of [
 
 test("data-local counts localhost for testing", () => {
   const b = browser({ url: "http://localhost:3000/", attrs: { local: "true" } }).run();
+  assert.equal(b.sent.length, 1);
+});
+
+function withClock(fn) {
+  let now = 1_000_000;
+  const realNow = Date.now;
+  Date.now = () => now;
+  try { return fn((ms) => { now += ms; }); } finally { Date.now = realNow; }
+}
+
+test("engaged time on SPA navigation belongs to the page that was left", () => {
+  for (const navigate of [
+    (b) => b.history.pushState({}, "", "/docs"),
+    (b) => { b.location.pathname = "/docs"; b.location.search = ""; b.fire("popstate"); },
+  ]) {
+    const b = browser({ url: "https://www.example.com/pricing" });
+    withClock((tick) => { b.run(); tick(5000); navigate(b); });
+    const seen = b.sent.map((x) => [x.body.n, new URL(x.body.u).pathname, x.body.e]);
+    assert.deepEqual(seen, [["pageview", "/pricing", undefined], ["engage", "/pricing", 5000], ["pageview", "/docs", undefined]]);
+  }
+});
+
+test("a prerendered page counts only when it is opened", () => {
+  const b = browser({ prerendering: true }).run();
+  assert.equal(b.sent.length, 0);
+  b.activate();
+  assert.deepEqual(b.sent.map((x) => x.body.n), ["pageview"]);
+});
+
+test("a bad currency or negative value is left out, and the event still counts", () => {
+  const b = browser().run();
+  for (const options of [{ value: 10, currency: "euro" }, { value: 10, currency: "€" }, { value: -5, currency: "EUR" }]) {
+    b.window.qs("Purchase", options);
+  }
+  const events = b.sent.filter((x) => x.body.n === "Purchase").map((x) => [x.body.v, x.body.c]);
+  assert.deepEqual(events, [[1000, undefined], [1000, undefined], [undefined, undefined]]);
+});
+
+test("the referrer is sent as its origin only", () => {
+  const b = browser({ referrer: "https://www.example.com/account?email=a@b.c&token=SECRET" }).run();
+  assert.equal(b.sent[0].body.r, "https://www.example.com/");
+  assert.equal(browser({ referrer: "android-app://com.google.android.gm/x?y=1" }).run().sent[0].body.r, "android-app://com.google.android.gm/");
+  assert.equal(browser({ referrer: "" }).run().sent[0].body.r, null);
+});
+
+test("long URLs are cut to 2000 characters, query first", () => {
+  const long = "https://www.example.com/p?utm_source=" + "x".repeat(2100);
+  const b = browser({ url: long }).run();
+  assert.equal(b.sent[0].body.u, "https://www.example.com/p");
+  const path = "https://www.example.com/" + "y".repeat(2100);
+  assert.equal(browser({ url: path }).run().sent[0].body.u.length, 2000);
+});
+
+test("loading the script twice counts once", () => {
+  const b = browser().run();
+  b.run();
+  b.history.pushState({}, "", "/a");
+  assert.deepEqual(b.sent.map((x) => new URL(x.body.u).pathname), ["/pricing", "/a"]);
+});
+
+test("engage is reserved", () => {
+  const b = browser().run();
+  b.window.qs("engage");
   assert.equal(b.sent.length, 1);
 });

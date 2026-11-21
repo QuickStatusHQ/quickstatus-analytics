@@ -24,7 +24,8 @@ your `<head>`:
 <script defer src="https://quickstatus.dev/qs.js" data-site="YOUR_SITE_ID"></script>
 ```
 
-For production, pin a version and add its SRI hash from the release's `SHA256SUMS`:
+For production, pin a version and add its SRI hash. Each GitHub release has an `SRI` file with
+the `sha384-…` value for `integrity=` (`SHA256SUMS` is for checking downloads, not for SRI):
 
 ```html
 <script defer src="https://quickstatus.dev/qs@0.1.0.js" data-site="YOUR_SITE_ID"
@@ -40,7 +41,7 @@ For production, pin a version and add its SRI hash from the release's `SHA256SUM
 | `data-hash` | `false` | Count `#/route` changes as pages (hash routers). |
 | `data-exclude` | | Comma-separated paths not to count: `/admin/**, /preview/*`. |
 | `data-manual` | `false` | No automatic page views; call `qs("pageview")` yourself. |
-| `data-local` | `false` | Count on `localhost` and `*.test` (for trying it out). |
+| `data-local` | `false` | Count on `localhost`, `127.x`, `[::1]`, `*.localhost`, `*.local` and `*.test` (for trying it out). |
 | `data-debug` | `false` | Log to the console why a page isn't counted. |
 
 ## Custom events
@@ -51,22 +52,29 @@ For production, pin a version and add its SRI hash from the release's `SHA256SUM
 
 ```js
 qs("Signup");
-qs("Purchase", { value: 49.0, currency: "EUR" });  // sent as 4900 minor units
+qs("Purchase", { value: 49.0, currency: "EUR" });  // sent as v: 4900, c: "EUR"
 ```
+
+`value` is sent multiplied by 100 whatever the currency (`{ value: 500, currency: "JPY" }`
+sends `50000`). A negative value, or a currency that isn't a 3-letter code, is left out and the
+event is still counted. `pageview` and `engage` are reserved names.
 
 Calls made before the script loads are queued by the line above and sent once it loads.
 
 ## Single-page apps
 
 Page views are counted on `history.pushState` and `popstate` automatically. With a hash router,
-add `data-hash="true"`.
+add `data-hash="true"`: `/#/settings` is then stored as its own page. Loading the script twice
+counts once.
 
 ## First-party proxy
 
 Some ad blockers block third-party analytics hosts. To serve the script and the collector from
 your own domain, see [`examples/`](examples/) for Next.js, Netlify, Vercel, Cloudflare Workers,
 nginx and Caddy. Each one forwards the visitor's IP in `X-Forwarded-For` and sets
-`X-QS-Proxy: 1`, without which every visitor would look like your proxy.
+`X-QS-Proxy: 1`, without which every visitor would look like your proxy. Through a proxy, the
+collector also limits the proxy's own address (600 requests per 10 seconds), because anyone can
+send that header.
 
 ## Development
 

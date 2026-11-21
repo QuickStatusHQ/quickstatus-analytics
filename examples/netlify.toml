@@ -1,4 +1,5 @@
-# Netlify adds the visitor's IP to X-Forwarded-For on proxied requests.
+# Netlify adds the visitor's IP to X-Forwarded-For on proxied requests. Proxy redirects can't
+# drop request headers, so your site's cookies are forwarded too; the collector ignores them.
 [[redirects]]
   from = "/qs.js"
   to = "https://quickstatus.dev/qs.js"

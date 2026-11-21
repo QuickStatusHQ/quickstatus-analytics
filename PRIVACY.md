@@ -16,7 +16,8 @@ The collector that receives it, the only server code that sees an IP address or 
 - The anonymous id changes every day and can't be linked across days, because the salt that
   makes it is deleted after two days.
 - The URL query is reduced in the browser to `utm_*`, `ref` and `source` before anything is
-  sent. Paths are stored without query or fragment.
+  sent, and the referrer to its origin. Paths are stored without the query, and without the
+  fragment unless the site opts in with `data-hash="true"` (hash routers).
 
 ## The visitor id
 
@@ -47,8 +48,9 @@ Test vectors (`salt` = bytes 0x00…0x1f, `site` = `k3x9mpq2wa`,
 | `203.0.113.8` | `55ce4476359220751b9d8bace0cfed64` |
 
 If the collector can't read the shared salt (database unreachable at midnight), it uses a random
-salt kept only in its own memory for that day. Visitors may then be counted more than once;
-nothing is less private.
+salt kept only in its own memory, and tries the shared one again every minute. Once it can read
+it, it switches back, so a visitor seen before and after the switch is counted twice that day.
+Visitors may be counted more than once; nothing is less private.
 
 ## Sessions
 

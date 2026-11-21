@@ -36,9 +36,13 @@ def source_for(host: str | None) -> str | None:
             # AI hosts match exactly only: gemini.google.com must not make every
             # *.google.com an AI source, and the reverse.
             return SOURCES[parent][0]
-    # Google ccTLDs (google.de, google.co.uk, news.google.fr).
-    if "google" in parts[:-1] and len(parts) - parts.index("google") <= 3:
-        return "Google"
+    # Google ccTLDs (google.de, google.co.uk, news.google.fr), not google.attacker.example.
+    if "google" in parts[:-1]:
+        rest = parts[parts.index("google") + 1:]
+        if (len(rest) == 1 and 2 <= len(rest[0]) <= 3) or (
+            len(rest) == 2 and rest[0] in ("co", "com") and len(rest[1]) == 2
+        ):
+            return "Google"
     return host
 
 

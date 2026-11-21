@@ -82,13 +82,16 @@ def parse_beacon(data: Any) -> Beacon:
             raise BeaconError("c must be a 3-letter currency code")
         currency = currency.upper()
     value = _int(data, "v", 0, VALUE_MAX)
+    engaged = _int(data, "e", 0, ENGAGED_MAX_MS)
+    if name == ENGAGE and engaged is None:
+        raise BeaconError("engage needs e; engage is reserved for engaged time")
     return Beacon(
         site=site,
         name=name,
         url=url,
         referrer=(referrer or "")[:URL_MAX] or None,
         width=_int(data, "w", 0, 20000),
-        engaged_ms=_int(data, "e", 0, ENGAGED_MAX_MS),
+        engaged_ms=engaged,
         scroll=_int(data, "d", 0, 100),
         value=value,
         currency=currency if value is not None else None,
@@ -100,7 +103,7 @@ def parse_beacon(data: Any) -> Beacon:
 # Dropped before anything is counted: common crawlers, link previews, HTTP libraries, headless
 # browsers and uptime probes.
 BOT_RE = re.compile(
-    r"bot\b|bot/|crawl|spider|slurp|archiver|headless|lighthouse|pagespeed|gtmetrix|pingdom|"
+    r"(?<!cu)bot\b|bot/|crawl|spider|slurp|archiver|headless|lighthouse|pagespeed|gtmetrix|pingdom|"
     r"preview|monitor|uptime|statuscake|quickstatus|curl/|wget/|python|go-http|java/|okhttp|"
     r"axios/|node-fetch|undici|httpclient|libwww|scrapy|phantomjs|selenium|puppeteer|"
     r"playwright|facebookexternalhit|embedly|whatsapp|bitlybot|discordbot|slackbot|"
@@ -162,12 +165,15 @@ def device_for(width: int | None, user_agent: str | None) -> str:
 
 
 def split_url(url: str) -> tuple[str, str, dict[str, str]]:
-    """(hostname, path, utm) with the query and fragment removed from the path."""
+    """(hostname, path, utm). The query is removed from the path. A fragment is kept as part of
+    the path (`/#/settings`): the tracker sends one only with data-hash, for hash routers."""
     parts = urlsplit(url)
     host = (parts.hostname or "").lower()
     path = parts.path or "/"
     if not path.startswith("/"):
         path = "/" + path
+    if parts.fragment:
+        path = f"{path}#{parts.fragment}"
     path = path[:PATH_MAX]
     query = parse_qs(parts.query, keep_blank_values=False)
     utm: dict[str, str] = {}
