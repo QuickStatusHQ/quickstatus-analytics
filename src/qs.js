@@ -9,9 +9,9 @@
   var d = document;
   var nav = navigator;
   var loc = location;
-  // Loaded twice: the first copy counts.
-  if (w.qs && w.qs.loaded) return;
   var script = d.currentScript;
+  // Loaded twice: only the first tag counts, with its data-site.
+  if (w.qs && w.qs.loaded) return;
   var attr = function (name) {
     return script ? script.getAttribute("data-" + name) : null;
   };
@@ -45,17 +45,20 @@
     return null;
   }
 
+  function kept(search) {
+    var query = (search || "").split("&").filter(function (pair) { return KEEP.test(pair.split("=")[0]); });
+    return query.length ? "?" + query.join("&") : "";
+  }
+
   function pageUrl() {
-    var query = [];
-    var search = loc.search.replace(/^\?/, "");
-    if (search) {
-      search.split("&").forEach(function (pair) {
-        if (KEEP.test(pair.split("=")[0])) query.push(pair);
-      });
-    }
     var base = loc.protocol + "//" + loc.host + loc.pathname;
-    var hash = hashMode ? loc.hash : "";
-    var url = base + (query.length ? "?" + query.join("&") : "") + hash;
+    // Hash routers only: "#/route", query filtered. Other fragments are never sent.
+    var hash = "";
+    if (hashMode && /^#!?\//.test(loc.hash)) {
+      var parts = loc.hash.split("?");
+      hash = parts[0] + kept(parts[1]);
+    }
+    var url = base + kept(loc.search.replace(/^\?/, "")) + hash;
     // Up to 2000 characters: drop the query, then cut.
     return url.length > 2000 ? (base + hash).slice(0, 2000) : url;
   }
@@ -136,8 +139,12 @@
     if (!currentIgnored) send(payload("pageview", null, page));
   }
 
+  // A prerendered page sends nothing until it is opened.
+  var held = d.prerendering ? [] : null;
+
   function track(name, options) {
-    if (!name || typeof name !== "string") return;
+    if (held) return held.push(arguments);
+    if (typeof name !== "string" || !(name = name.replace(/\s+/g, " ").trim())) return;
     if (name === "pageview") return pageview();
     // "engage" is reserved for engaged time.
     if (name === "engage" || ignored()) return;
@@ -166,15 +173,18 @@
     if (hashMode) w.addEventListener("hashchange", pageview);
   }
 
-  // Calls made before the script loaded: window.qs = window.qs || function () { (qs.q = qs.q || []).push(arguments) }
+  // Calls queued before load (README, Custom events).
   var queued = (w.qs && w.qs.q) || [];
   track.loaded = true;
   w.qs = track;
-  if (!manual) {
-    // A prerendered page (speculation rules) counts only once the visitor opens it.
-    if (d.prerendering) d.addEventListener("prerenderingchange", function () { pageview(); });
-    else pageview();
-  }
+  if (held) {
+    d.addEventListener("prerenderingchange", function () {
+      var calls = held;
+      held = null;
+      if (!manual) pageview();
+      for (var j = 0; j < calls.length; j++) track.apply(null, calls[j]);
+    });
+  } else if (!manual) pageview();
   for (var i = 0; i < queued.length; i++) track.apply(null, queued[i]);
 
   var reason = ignored();

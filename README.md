@@ -38,7 +38,7 @@ the `sha384-…` value for `integrity=` (`SHA256SUMS` is for checking downloads,
 | --- | --- | --- |
 | `data-site` | (required) | Site id from the console. |
 | `data-api` | `https://a.quickstatus.dev/e` | Collector URL, for a [first-party proxy](examples/). |
-| `data-hash` | `false` | Count `#/route` changes as pages (hash routers). |
+| `data-hash` | `false` | Count `#/route` changes as pages (hash routers). Other fragments are never sent. |
 | `data-exclude` | | Comma-separated paths not to count: `/admin/**, /preview/*`. |
 | `data-manual` | `false` | No automatic page views; call `qs("pageview")` yourself. |
 | `data-local` | `false` | Count on `localhost`, `127.x`, `[::1]`, `*.localhost`, `*.local` and `*.test` (for trying it out). |
@@ -65,7 +65,8 @@ Calls made before the script loads are queued by the line above and sent once it
 
 Page views are counted on `history.pushState` and `popstate` automatically. With a hash router,
 add `data-hash="true"`: `/#/settings` is then stored as its own page. Loading the script twice
-counts once.
+counts once: only the first tag runs, so a second tag's `data-site` is ignored and a page counts
+for one site.
 
 ## First-party proxy
 
@@ -73,8 +74,9 @@ Some ad blockers block third-party analytics hosts. To serve the script and the 
 your own domain, see [`examples/`](examples/) for Next.js, Netlify, Vercel, Cloudflare Workers,
 nginx and Caddy. Each one forwards the visitor's IP in `X-Forwarded-For` and sets
 `X-QS-Proxy: 1`, without which every visitor would look like your proxy. Through a proxy, the
-collector also limits the proxy's own address (600 requests per 10 seconds), because anyone can
-send that header.
+collector also limits the proxy's own address (600 requests per 10 seconds per site), because
+anyone can send that header. A site sending more than that through one proxy address gets `429`s
+for the excess.
 
 ## Development
 

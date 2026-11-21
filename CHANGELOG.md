@@ -16,3 +16,8 @@
   proxy address of `X-QS-Proxy` requests; `GET /e` lists POST in `Allow`; look-alike
   `google.*` hosts and CUBOT phones are no longer misread. Docs: status codes, value × 100,
   cookies with `sendBeacon`, SRI file.
+- Second review: hash mode sends only `#/route` fragments, with their query filtered like the
+  page's, and the collector stores the route without its query (and reads its UTM tags); calls
+  made during prerender wait until the page is opened; event names are trimmed before the
+  reserved-name check; the proxy limit is per proxy address and site; `google.xyz`-style
+  hosts are no longer Google; README says a second tag's `data-site` is ignored.

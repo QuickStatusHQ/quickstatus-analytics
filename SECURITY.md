@@ -16,7 +16,8 @@ size, hardware or battery information.
 
 **Minimal URL.** The query string is reduced to `utm_*`, `ref` and `source` in the browser, and
 the referrer to its origin. The fragment is sent only when the site opts in with
-`data-hash="true"`.
+`data-hash="true"`, and then only a `#/route` with its query filtered the same way; fragments
+such as `#access_token=…` are never sent.
 
 **No reads of the response.** Beacons are fire-and-forget, and the script never evaluates
 anything it receives. The `fetch` fallback uses `credentials: "omit"`, but `navigator.sendBeacon`

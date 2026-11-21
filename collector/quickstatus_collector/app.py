@@ -38,9 +38,10 @@ BUFFER_MAX = 20_000
 # Per client IP: a page load sends 1-3 beacons, so this only stops scripts.
 IP_LIMIT = 60
 IP_WINDOW_SECONDS = 10.0
-# Per proxy address, for requests that say they come through a first-party proxy
+# Per proxy address and site, for requests that say they come through a first-party proxy
 # (X-QS-Proxy: 1). Anyone can send that header with any X-Forwarded-For, so the address the
-# load balancer saw is limited too, with room for one site's traffic through its proxy.
+# load balancer saw is limited too. Keyed by site as well, because platform proxies (Workers,
+# Netlify, Vercel) may share egress addresses between many sites.
 PROXY_IP_LIMIT = 600
 SALT_RETRY_SECONDS = 60.0
 
@@ -216,7 +217,7 @@ class Collector:
         ip = client_ip(request)
         edge = edge_ip(request)
         # Every request counts against the limits, bots included.
-        if not self.limiter.allow(ip) or (edge != ip and not self.proxy_limiter.allow(edge)):
+        if not self.limiter.allow(ip) or (edge != ip and not self.proxy_limiter.allow(f"{edge} {beacon.site}")):
             return Response(status_code=429, headers=CORS)
         user_agent = request.headers.get("user-agent") or ""
         now = datetime.now(UTC)

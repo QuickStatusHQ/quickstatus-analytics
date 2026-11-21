@@ -177,6 +177,10 @@ def test_spoofed_proxy_header_and_bots_stay_under_the_limits(collector):
             "user-agent": UA, "x-qs-proxy": "1", "x-forwarded-for": f"10.0.{i // 250}.{i % 250}, 203.0.113.9"}).status_code
             for i in range(PROXY_IP_LIMIT + 1)]
         assert codes.count(202) == PROXY_IP_LIMIT and codes[-1] == 429
+        # Keyed by site too: another site behind the same (possibly shared) proxy address is unaffected.
+        other = json.dumps({"s": "othersite01", "u": "https://other.example/", "w": 1440})
+        assert client.post("/e", content=other, headers={
+            "user-agent": UA, "x-qs-proxy": "1", "x-forwarded-for": "10.9.9.9, 203.0.113.9"}).status_code == 202
         bots = [client.post("/e", content=body, headers={"user-agent": "curl/8.5", "x-forwarded-for": "203.0.113.10"}).status_code
                 for _ in range(IP_LIMIT + 1)]
         assert bots[-1] == 429
@@ -192,7 +196,13 @@ def test_get_on_e_lists_post_in_allow(collector):
 
 def test_hash_routes_keep_their_route_and_engage_needs_e():
     assert split_url("https://www.example.com/#/settings")[1] == "/#/settings"
+    assert split_url("https://www.example.com/#!/settings")[1] == "/#!/settings"
     assert split_url("https://www.example.com/docs?x=1")[1] == "/docs"
+    # The route's query is never stored, but its UTM tags count; other fragments are dropped.
+    assert split_url("https://www.example.com/#/reset?token=SECRET&utm_source=x") == (
+        "www.example.com", "/#/reset", {"source": "x"})
+    assert split_url("https://www.example.com/#access_token=ya29.SECRET&token_type=Bearer")[1] == "/"
+    assert split_url("https://www.example.com/pricing#faq")[1] == "/pricing"
     with pytest.raises(ValueError):
         parse_beacon({"s": "k3x9mpq2wa", "n": "engage", "u": "https://example.com/"})
 
@@ -200,7 +210,7 @@ def test_hash_routes_keep_their_route_and_engage_needs_e():
 def test_lookalike_google_hosts_and_cubot_phones():
     for host in ("google.com", "google.de", "www.google.co.uk", "news.google.fr", "google.com.au"):
         assert source_for(host) == "Google", host
-    for host in ("google.attacker.example", "google.com.attacker"):
+    for host in ("google.attacker.example", "google.com.attacker", "google.xyz", "google.top", "google.icu"):
         assert source_for(host) == host, host
     cubot = "Mozilla/5.0 (Linux; Android 12; CUBOT X30) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/23.0 Chrome/115.0 Mobile Safari/537.36"
     assert not is_bot(cubot)

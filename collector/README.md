@@ -8,7 +8,7 @@ What happens to a request, in order (`quickstatus_collector/app.py`, `Collector.
 
 1. The body is validated against payload v1 (`events.parse_beacon`); unknown keys are ignored.
 2. A rate limit held in memory for 10 seconds: 60 requests per client IP, and 600 per proxy
-   address for requests sent with `X-QS-Proxy: 1`. It applies to every request, bots included.
+   address and site for requests sent with `X-QS-Proxy: 1`. It applies to every request, bots included.
 3. Bots are recognised from the user agent (`events.is_bot`) and counted as a number only.
 4. `events.enrich` makes the queue message: the daily visitor id (`events.visitor_id`, see
    [PRIVACY.md](../PRIVACY.md)), country/region/city, browser, OS, device, path, referrer host,

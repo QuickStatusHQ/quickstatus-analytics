@@ -165,17 +165,22 @@ def device_for(width: int | None, user_agent: str | None) -> str:
 
 
 def split_url(url: str) -> tuple[str, str, dict[str, str]]:
-    """(hostname, path, utm). The query is removed from the path. A fragment is kept as part of
-    the path (`/#/settings`): the tracker sends one only with data-hash, for hash routers."""
+    """(hostname, path, utm). The query is removed from the path. A hash-router fragment
+    (`#/settings`, `#!/settings`, sent only with data-hash) is kept as part of the path without
+    its query, and UTM tags in that query count. Any other fragment (`#faq`,
+    `#access_token=…`) is dropped."""
     parts = urlsplit(url)
     host = (parts.hostname or "").lower()
     path = parts.path or "/"
     if not path.startswith("/"):
         path = "/" + path
-    if parts.fragment:
-        path = f"{path}#{parts.fragment}"
+    search = parts.query
+    if parts.fragment.startswith(("/", "!/")):
+        route, _, route_query = parts.fragment.partition("?")
+        path = f"{path}#{route}"
+        search = "&".join(q for q in (search, route_query) if q)
     path = path[:PATH_MAX]
-    query = parse_qs(parts.query, keep_blank_values=False)
+    query = parse_qs(search, keep_blank_values=False)
     utm: dict[str, str] = {}
     for key in UTM_KEYS:
         values = query.get(f"utm_{key}")

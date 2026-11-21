@@ -16,8 +16,9 @@ The collector that receives it, the only server code that sees an IP address or 
 - The anonymous id changes every day and can't be linked across days, because the salt that
   makes it is deleted after two days.
 - The URL query is reduced in the browser to `utm_*`, `ref` and `source` before anything is
-  sent, and the referrer to its origin. Paths are stored without the query, and without the
-  fragment unless the site opts in with `data-hash="true"` (hash routers).
+  sent, and the referrer to its origin. Paths are stored without the query and fragment. With
+  `data-hash="true"` (hash routers), a `#/route` fragment is sent with its query filtered the
+  same way and stored without that query; other fragments are never sent.
 
 ## The visitor id
 

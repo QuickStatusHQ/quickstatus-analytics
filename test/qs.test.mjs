@@ -79,7 +79,8 @@ test("data-api, hash mode and SPA navigations", () => {
   b.history.pushState({}, "", "/docs");
   b.window.qs("pageview");
   assert.equal(b.sent[0].endpoint, "https://stats.example.com/qs/e");
-  assert.equal(b.sent[0].body.u, "https://www.example.com/pricing?utm_source=hn#top");
+  // Hash mode sends "#/route" fragments only; "#top" is an anchor, not a route.
+  assert.equal(b.sent[0].body.u, "https://www.example.com/pricing?utm_source=hn");
   assert.equal(b.sent.at(-1).body.u, "https://www.example.com/docs");
 });
 
@@ -208,4 +209,34 @@ test("engage is reserved", () => {
   const b = browser().run();
   b.window.qs("engage");
   assert.equal(b.sent.length, 1);
+});
+
+test("hash mode sends the route with its query filtered, and no other fragment", () => {
+  const urls = {
+    "https://www.example.com/#/reset?token=SECRET&utm_source=x": "https://www.example.com/#/reset?utm_source=x",
+    "https://www.example.com/#!/docs": "https://www.example.com/#!/docs",
+    "https://www.example.com/#access_token=ya29.SECRET&token_type=Bearer": "https://www.example.com/",
+    "https://www.example.com/pricing#faq": "https://www.example.com/pricing",
+  };
+  for (const [url, sent] of Object.entries(urls)) {
+    assert.equal(browser({ url, attrs: { hash: "true" } }).run().sent[0].body.u, sent);
+  }
+});
+
+test("calls during prerender wait until the page is opened", () => {
+  const b = browser({ prerendering: true });
+  b.window.qs = function () { (b.window.qs.q ||= []).push(arguments); };
+  b.window.qs("Purchase", { value: 10 });
+  b.run();
+  b.window.qs("Signup");
+  assert.equal(b.sent.length, 0);
+  b.activate();
+  assert.deepEqual(b.sent.map((x) => x.body.n), ["pageview", "Purchase", "Signup"]);
+});
+
+test("event names are trimmed before the reserved check", () => {
+  const b = browser().run();
+  b.window.qs(" engage ");
+  b.window.qs("  Sign   up ");
+  assert.deepEqual(b.sent.map((x) => x.body.n), ["pageview", "Sign up"]);
 });
