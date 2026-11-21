@@ -1,0 +1,17 @@
+your-site.com {
+	handle /qs.js {
+		rewrite * /qs.js
+		reverse_proxy https://quickstatus.dev {
+			header_up Host quickstatus.dev
+		}
+	}
+	handle /qs/e {
+		rewrite * /e
+		reverse_proxy https://a.quickstatus.dev {
+			header_up Host a.quickstatus.dev
+			header_up X-QS-Proxy 1
+			header_up -Cookie
+		}
+	}
+	# ... the rest of your site
+}

@@ -1,0 +1,17 @@
+[project]
+name = "quickstatus-collector"
+version = "0.1.0"
+description = "The QuickStatus.dev analytics collector: beacon validation, the daily visitor id, and the queue message."
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.110"]
+
+[project.optional-dependencies]
+geo = ["maxminddb>=2.5"]
+test = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27", "uvicorn>=0.29"]
+
+[tool.setuptools.package-data]
+quickstatus_collector = ["sources.json"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

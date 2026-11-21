@@ -1,0 +1,12 @@
+# Netlify adds the visitor's IP to X-Forwarded-For on proxied requests.
+[[redirects]]
+  from = "/qs.js"
+  to = "https://quickstatus.dev/qs.js"
+  status = 200
+
+[[redirects]]
+  from = "/qs/e"
+  to = "https://a.quickstatus.dev/e"
+  status = 200
+  force = true
+  headers = {X-QS-Proxy = "1"}

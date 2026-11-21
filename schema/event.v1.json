@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/QuickStatusHQ/quickstatus-analytics/schema/event.v1.json",
+  "title": "QuickStatus.dev analytics beacon, version 1",
+  "description": "The body qs.js POSTs to the collector as text/plain. Every field is listed in PAYLOAD.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["s", "n", "u"],
+  "properties": {
+    "s": { "type": "string", "pattern": "^[a-z0-9]{6,32}$", "description": "Site id from the script tag (data-site)." },
+    "n": { "type": "string", "minLength": 1, "maxLength": 120, "description": "\"pageview\", \"engage\", or a custom event name." },
+    "u": { "type": "string", "maxLength": 2000, "format": "uri", "description": "Page URL. The query keeps only utm_*, ref and source." },
+    "r": { "type": ["string", "null"], "maxLength": 2000, "description": "document.referrer." },
+    "w": { "type": "integer", "minimum": 0, "maximum": 20000, "description": "Viewport width in CSS pixels (device type)." },
+    "e": { "type": "integer", "minimum": 0, "description": "engage only: milliseconds the page was visible." },
+    "d": { "type": "integer", "minimum": 0, "maximum": 100, "description": "engage only: deepest scroll, percent." },
+    "v": { "type": "integer", "minimum": 0, "description": "Custom events: value in minor units (cents)." },
+    "c": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "Custom events: ISO 4217 currency of v." }
+  }
+}

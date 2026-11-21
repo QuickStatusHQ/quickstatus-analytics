@@ -1,0 +1,26 @@
+# Tag vX.Y.Z -> GitHub release with qs.js, qs@X.Y.Z.js, SHA256SUMS and SRI hashes.
+name: release
+on:
+  push: {tags: ['v*.*.*']}
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Version matches the tag
+        run: |
+          v="$(sed -n 's|^/\*! QuickStatus.dev analytics v\([0-9.]*\) .*|\1|p' src/qs.js)"
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "qs.js header $v != tag $GITHUB_REF_NAME"; exit 1; }
+      - run: node --test test/
+      - name: Assets
+        run: |
+          mkdir dist
+          cp src/qs.js dist/qs.js
+          cp src/qs.js "dist/qs@${GITHUB_REF_NAME#v}.js"
+          cp schema/event.v1.json data/sources.json dist/
+          (cd dist && sha256sum * > SHA256SUMS && for f in qs*.js; do echo "$f sha384-$(openssl dgst -sha384 -binary "$f" | openssl base64 -A)"; done > SRI)
+      - name: GitHub release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-from-tag --verify-tag

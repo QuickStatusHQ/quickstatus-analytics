@@ -1,0 +1,238 @@
+{
+  "version": 1,
+  "comment": "Referrer host -> source name. Hosts match after a leading www. or m. is removed, then by parent domain; ai hosts match exactly only.",
+  "sources": {
+    "google.com": {
+      "name": "Google",
+      "ai": false
+    },
+    "bing.com": {
+      "name": "Bing",
+      "ai": false
+    },
+    "duckduckgo.com": {
+      "name": "DuckDuckGo",
+      "ai": false
+    },
+    "search.brave.com": {
+      "name": "Brave Search",
+      "ai": false
+    },
+    "yahoo.com": {
+      "name": "Yahoo",
+      "ai": false
+    },
+    "yandex.ru": {
+      "name": "Yandex",
+      "ai": false
+    },
+    "yandex.com": {
+      "name": "Yandex",
+      "ai": false
+    },
+    "baidu.com": {
+      "name": "Baidu",
+      "ai": false
+    },
+    "ecosia.org": {
+      "name": "Ecosia",
+      "ai": false
+    },
+    "kagi.com": {
+      "name": "Kagi",
+      "ai": false
+    },
+    "startpage.com": {
+      "name": "Startpage",
+      "ai": false
+    },
+    "qwant.com": {
+      "name": "Qwant",
+      "ai": false
+    },
+    "chatgpt.com": {
+      "name": "ChatGPT",
+      "ai": true
+    },
+    "chat.openai.com": {
+      "name": "ChatGPT",
+      "ai": true
+    },
+    "perplexity.ai": {
+      "name": "Perplexity",
+      "ai": true
+    },
+    "claude.ai": {
+      "name": "Claude",
+      "ai": true
+    },
+    "gemini.google.com": {
+      "name": "Gemini",
+      "ai": true
+    },
+    "bard.google.com": {
+      "name": "Gemini",
+      "ai": true
+    },
+    "copilot.microsoft.com": {
+      "name": "Copilot",
+      "ai": true
+    },
+    "chat.deepseek.com": {
+      "name": "DeepSeek",
+      "ai": true
+    },
+    "you.com": {
+      "name": "You.com",
+      "ai": true
+    },
+    "phind.com": {
+      "name": "Phind",
+      "ai": true
+    },
+    "meta.ai": {
+      "name": "Meta AI",
+      "ai": true
+    },
+    "grok.com": {
+      "name": "Grok",
+      "ai": true
+    },
+    "chat.mistral.ai": {
+      "name": "Le Chat",
+      "ai": true
+    },
+    "news.ycombinator.com": {
+      "name": "Hacker News",
+      "ai": false
+    },
+    "reddit.com": {
+      "name": "Reddit",
+      "ai": false
+    },
+    "old.reddit.com": {
+      "name": "Reddit",
+      "ai": false
+    },
+    "x.com": {
+      "name": "X",
+      "ai": false
+    },
+    "twitter.com": {
+      "name": "X",
+      "ai": false
+    },
+    "t.co": {
+      "name": "X",
+      "ai": false
+    },
+    "threads.net": {
+      "name": "Threads",
+      "ai": false
+    },
+    "threads.com": {
+      "name": "Threads",
+      "ai": false
+    },
+    "bsky.app": {
+      "name": "Bluesky",
+      "ai": false
+    },
+    "linkedin.com": {
+      "name": "LinkedIn",
+      "ai": false
+    },
+    "lnkd.in": {
+      "name": "LinkedIn",
+      "ai": false
+    },
+    "facebook.com": {
+      "name": "Facebook",
+      "ai": false
+    },
+    "l.facebook.com": {
+      "name": "Facebook",
+      "ai": false
+    },
+    "lm.facebook.com": {
+      "name": "Facebook",
+      "ai": false
+    },
+    "instagram.com": {
+      "name": "Instagram",
+      "ai": false
+    },
+    "l.instagram.com": {
+      "name": "Instagram",
+      "ai": false
+    },
+    "youtube.com": {
+      "name": "YouTube",
+      "ai": false
+    },
+    "producthunt.com": {
+      "name": "Product Hunt",
+      "ai": false
+    },
+    "github.com": {
+      "name": "GitHub",
+      "ai": false
+    },
+    "dev.to": {
+      "name": "DEV",
+      "ai": false
+    },
+    "medium.com": {
+      "name": "Medium",
+      "ai": false
+    },
+    "substack.com": {
+      "name": "Substack",
+      "ai": false
+    },
+    "stackoverflow.com": {
+      "name": "Stack Overflow",
+      "ai": false
+    },
+    "discord.com": {
+      "name": "Discord",
+      "ai": false
+    },
+    "slack.com": {
+      "name": "Slack",
+      "ai": false
+    },
+    "lobste.rs": {
+      "name": "Lobsters",
+      "ai": false
+    },
+    "indiehackers.com": {
+      "name": "Indie Hackers",
+      "ai": false
+    },
+    "mastodon.social": {
+      "name": "Mastodon",
+      "ai": false
+    },
+    "t.me": {
+      "name": "Telegram",
+      "ai": false
+    },
+    "web.telegram.org": {
+      "name": "Telegram",
+      "ai": false
+    },
+    "mail.google.com": {
+      "name": "Gmail",
+      "ai": false
+    },
+    "outlook.live.com": {
+      "name": "Outlook",
+      "ai": false
+    },
+    "outlook.office.com": {
+      "name": "Outlook",
+      "ai": false
+    }
+  }
+}
