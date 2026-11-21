@@ -227,3 +227,22 @@ def test_random_site_ids_through_a_spoofed_proxy_hit_the_address_ceiling(collect
                 "user-agent": UA, "x-qs-proxy": "1",
                 "x-forwarded-for": f"10.{i // 62500}.{i // 250 % 250}.{i % 250}, 203.0.113.50"}).status_code)
         assert codes.count(202) == PROXY_EDGE_LIMIT and codes[-1] == 429
+
+
+def test_a_site_over_its_proxy_limit_does_not_block_other_sites(collector):
+    """Denied requests aren't recorded, so one site going over 600 doesn't use up the shared
+    per-address ceiling, and rejected spoofed IPs leave no limiter entries."""
+    proxy = "192.0.2.50"
+
+    def post(client, site, i):
+        body = json.dumps({"s": site, "u": "https://example.com/", "w": 1440})
+        return client.post("/e", content=body, headers={
+            "user-agent": UA, "x-qs-proxy": "1",
+            "x-forwarded-for": f"10.{i // 62500}.{i // 250 % 250}.{i % 250}, {proxy}"}).status_code
+
+    with TestClient(create_app(collector)) as client:
+        codes = [post(client, "busysite01", i) for i in range(PROXY_IP_LIMIT + 400)]
+        assert codes.count(202) == PROXY_IP_LIMIT
+        assert len(collector.edge_limiter.hits[proxy]) == PROXY_IP_LIMIT
+        assert len(collector.limiter.hits) == PROXY_IP_LIMIT
+        assert post(client, "othersite01", 99_999) == 202

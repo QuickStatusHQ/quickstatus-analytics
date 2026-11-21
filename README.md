@@ -75,8 +75,11 @@ your own domain, see [`examples/`](examples/) for Next.js, Netlify, Vercel, Clou
 nginx and Caddy. Each one forwards the visitor's IP in `X-Forwarded-For` and sets
 `X-QS-Proxy: 1`, without which every visitor would look like your proxy. Through a proxy, the
 collector also limits the proxy's own address (600 requests per 10 seconds per site, and 5000
-across all sites), because anyone can send that header. A site sending more than that through one proxy address gets `429`s
-for the excess.
+across all sites), because anyone can send that header. A site sending more than that through
+one proxy address gets `429`s for the excess. Only accepted requests count, so one site over its
+limit doesn't use up the address's limit for other sites. If your proxy shares its address with
+other tenants (some hosting platforms do), a sender making up site ids can still fill the 5000
+for that address; a proxy with its own address avoids that.
 
 ## Development
 

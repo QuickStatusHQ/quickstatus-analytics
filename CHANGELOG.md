@@ -25,3 +25,7 @@
   site ids no longer get past the per-site limit); a hash route ends at a second `#`
   (`#/callback#access_token=…`); `pushState` and `popstate` during prerender send nothing, and
   opening the page counts the current URL once.
+- Fourth review: rate limits record only accepted requests, so a site over its proxy limit no
+  longer blocks other sites on the same proxy address; through a proxy, the client IP gets a
+  limiter entry only after the per-site and per-address checks pass; the limiter is also swept
+  when it holds many keys.

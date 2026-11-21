@@ -18,7 +18,6 @@ import json
 import logging
 import secrets
 import time
-from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from typing import Any, Awaitable, Callable
@@ -127,22 +126,49 @@ def chunks(items: list[dict[str, Any]], max_bytes: int) -> list[list[dict[str, A
 
 
 class IpLimiter:
-    """Request timestamps per IP for the last 10 s, in memory only, swept every minute."""
+    """Accepted requests per key (an IP, or proxy address and site) in the last 10 s, in memory
+    only. Denied requests aren't recorded, so a sender over its limit doesn't use up a limit it
+    shares with others. Swept every minute, or sooner when it holds many keys."""
+
+    MAX_KEYS = 100_000
 
     def __init__(self, limit: int = IP_LIMIT) -> None:
         self.limit = limit
-        self.hits: dict[str, list[float]] = defaultdict(list)
+        self.hits: dict[str, list[float]] = {}
         self._swept = time.monotonic()
 
-    def allow(self, ip: str) -> bool:
-        now = time.monotonic()
-        if now - self._swept > 60:
-            self.hits = defaultdict(list, {k: v for k, v in self.hits.items() if v and now - v[-1] < IP_WINDOW_SECONDS})
+    def _window(self, key: str, now: float) -> list[float]:
+        if now - self._swept > 60 or len(self.hits) > self.MAX_KEYS:
+            self.hits = {k: v for k, v in self.hits.items() if now - v[-1] < IP_WINDOW_SECONDS}
             self._swept = now
-        window = [stamp for stamp in self.hits[ip] if now - stamp < IP_WINDOW_SECONDS]
-        window.append(now)
-        self.hits[ip] = window
-        return len(window) <= self.limit
+        window = [stamp for stamp in self.hits.get(key, ()) if now - stamp < IP_WINDOW_SECONDS]
+        if window:
+            self.hits[key] = window
+        else:
+            self.hits.pop(key, None)
+        return window
+
+    def ok(self, key: str) -> bool:
+        """Would one more request be allowed? Records nothing."""
+        return len(self._window(key, time.monotonic())) < self.limit
+
+    def add(self, key: str) -> None:
+        self.hits.setdefault(key, []).append(time.monotonic())
+
+    def allow(self, key: str) -> bool:
+        if not self.ok(key):
+            return False
+        self.add(key)
+        return True
+
+
+def allow_all(*checks: tuple[IpLimiter, str]) -> bool:
+    """Every limit must have room; only then is the request recorded against each of them."""
+    if not all(limiter.ok(key) for limiter, key in checks):
+        return False
+    for limiter, key in checks:
+        limiter.add(key)
+    return True
 
 
 def client_ip(request: Request) -> str:
@@ -219,11 +245,14 @@ class Collector:
             return JSONResponse({"detail": str(exc)[:200]}, status_code=400, headers=CORS)
         ip = client_ip(request)
         edge = edge_ip(request)
-        # Every request counts against the limits, bots included.
-        proxied = edge != ip
-        if not self.limiter.allow(ip) or (proxied and not (
-            self.edge_limiter.allow(edge) and self.proxy_limiter.allow(f"{edge} {beacon.site}")
-        )):
+        # Every request counts against the limits, bots included, and only accepted ones are
+        # recorded. Through a proxy, the per-site and per-address limits are checked before the
+        # (spoofable) client IP gets a limiter entry.
+        if edge != ip:
+            allowed = allow_all((self.proxy_limiter, f"{edge} {beacon.site}"), (self.edge_limiter, edge), (self.limiter, ip))
+        else:
+            allowed = self.limiter.allow(ip)
+        if not allowed:
             return Response(status_code=429, headers=CORS)
         user_agent = request.headers.get("user-agent") or ""
         now = datetime.now(UTC)
