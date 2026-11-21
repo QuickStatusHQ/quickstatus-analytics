@@ -94,7 +94,9 @@ async def test_daily_salt_shared_then_local_fallback():
 
 
 @pytest.fixture
-def collector():
+def collector(monkeypatch):
+    # Limit tests count requests in one window; a slow runner must not let early hits expire.
+    monkeypatch.setattr("quickstatus_collector.app.IP_WINDOW_SECONDS", 3600.0)
     sent: list[list[dict]] = []
 
     async def salt(_now):
