@@ -14,6 +14,6 @@ the QuickStatus.dev backend beyond what PAYLOAD.md and PRIVACY.md describe.
   QuickStatus.dev service vendors it unmodified, so it holds no service-specific code: the salt
   store, queue and geo file are passed in. `sources.json` there is a copy of `data/sources.json`
   (tests check). A change to the visitor id updates `data/visitor-id-vectors.json` and PRIVACY.md.
-- Before a change is done: `node --test test/` and, for `collector/`,
+- Before a change is done: `node --test test/*.test.mjs` and, for `collector/`,
   `cd collector && pip install -e '.[test]' && pytest`.
 - Version lives in the `/*! ... v X.Y.Z` header of src/qs.js and in CHANGELOG.md; tags are `vX.Y.Z`.

@@ -71,7 +71,7 @@ nginx and Caddy. Each one forwards the visitor's IP in `X-Forwarded-For` and set
 ## Development
 
 ```sh
-node --test test/     # runs src/qs.js in a fake browser; no dependencies
+node --test test/*.test.mjs   # runs src/qs.js in a fake browser; no dependencies
 ```
 
 ## License

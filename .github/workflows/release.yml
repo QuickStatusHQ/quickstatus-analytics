@@ -13,7 +13,7 @@ jobs:
         run: |
           v="$(sed -n 's|^/\*! QuickStatus.dev analytics v\([0-9.]*\) .*|\1|p' src/qs.js)"
           [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "qs.js header $v != tag $GITHUB_REF_NAME"; exit 1; }
-      - run: node --test test/
+      - run: node --test test/*.test.mjs
       - name: Assets
         run: |
           mkdir dist
