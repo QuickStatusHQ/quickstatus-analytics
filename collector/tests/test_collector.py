@@ -52,6 +52,17 @@ def test_privacy_md_lists_the_same_vectors():
         assert f"`{v['ip']}` | `{v['visitor_id_hex']}`" in text
 
 
+@pytest.mark.parametrize("path", sorted((REPO / "schema" / "examples").glob("*.json")), ids=lambda p: p.name)
+def test_the_collector_accepts_every_schema_example(path):
+    parse_beacon(json.loads(path.read_text()))
+
+
+def test_schema_fields_are_the_ones_the_collector_reads():
+    schema = json.loads((REPO / "schema" / "event.v1.json").read_text())
+    assert set(schema["properties"]) == {"s", "n", "u", "r", "w", "e", "d", "v", "c"}
+    assert schema["required"] == ["s", "n", "u"]
+
+
 def test_sources_json_is_the_published_list():
     package = json.loads((REPO / "collector" / "quickstatus_collector" / "sources.json").read_text())
     assert package == json.loads((REPO / "data" / "sources.json").read_text())

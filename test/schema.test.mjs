@@ -1,4 +1,4 @@
-// The examples in schema/examples match schema/event.v1.json (the server vendors both).
+// The examples in schema/examples match schema/event.v1.json (the collector tests parse them too).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
