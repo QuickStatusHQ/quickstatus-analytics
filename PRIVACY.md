@@ -48,7 +48,7 @@ Test vectors (`salt` = bytes 0x00…0x1f, `site` = `k3x9mpq2wa`,
 | `203.0.113.7` | `fc0f1012c053ff86d8b7edb9ab3c8ce5` |
 | `203.0.113.8` | `55ce4476359220751b9d8bace0cfed64` |
 
-If the collector can't read the shared salt (database unreachable at midnight), it uses a random
+If the collector can't read the shared salt (salt store unreachable at midnight), it uses a random
 salt kept only in its own memory, and tries the shared one again every minute. Once it can read
 it, it switches back, so a visitor seen before and after the switch is counted twice that day.
 Visitors may be counted more than once; nothing is less private.
